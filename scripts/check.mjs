@@ -68,4 +68,14 @@ assert.equal(s.threadKeyForDm("aaa", "bbb"), s.threadKeyForDm("bbb", "aaa"));
 assert.equal(s.threadKeyForPlan("p1"), "p:p1");
 assert.equal(s.category("nope").key, "other", "unknown categories fall back");
 
+// ---- category guessing: a wrong guess mis-files a plan for everyone in discovery ----
+assert.equal(s.guessCategory("creator meetup, approvals on"), "network", '"creator" must not match /eat/');
+assert.equal(s.guessCategory("brunch & sketching"), "food", '"brunch" must not match /run/');
+assert.equal(s.guessCategory("badminton doubles"), "badminton");
+assert.equal(s.guessCategory("cycle around the lake"), "cycle");
+assert.equal(s.guessCategory("leg day at the gym"), "gym");
+assert.equal(s.guessCategory("5k easy run"), "run");
+assert.equal(s.guessCategory("coffee, whoever's around"), "coffee");
+assert.equal(s.guessCategory("sunday roast"), undefined, "no false positives on unknown titles");
+
 console.log("✓ shared logic checks passed");

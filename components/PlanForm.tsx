@@ -5,7 +5,7 @@ import { useGeo, useMe } from "@/components/hooks";
 import { Button, Chip, Field, Segmented, Sheet, Spinner, Stepper, Toggle } from "@/components/ui";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { CATEGORIES, category } from "@/convex/shared";
+import { CATEGORIES, category, guessCategory } from "@/convex/shared";
 import { type Place, reverseArea, searchPlaces } from "@/lib/places";
 import { useQuery } from "convex/react";
 import { useEffect, useRef, useState } from "react";
@@ -45,28 +45,6 @@ const QUICK: { title: string; cat: string; inMin: number; dur: number; spots: nu
   { title: "gym session", cat: "gym", inMin: 600, dur: 75, spots: 2 },
 ];
 
-const KEYWORDS: [RegExp, string][] = [
-  [/coffee|café|cafe|latte|chai/i, "coffee"],
-  [/badminton|shuttle/i, "badminton"],
-  [/football|5-a-side|soccer|turf/i, "football"],
-  [/tennis/i, "tennis"],
-  [/cycl|bike|biking|bicycle/i, "cycle"],
-  [/run|jog|5k|10k|marathon/i, "run"],
-  [/gym|lift|workout|leg day/i, "gym"],
-  [/hike|trek|trail/i, "hike"],
-  [/movie|film|cinema|show/i, "movie"],
-  [/game|board game|chess|ps5|xbox/i, "gaming"],
-  [/study|exam|revision|library/i, "study"],
-  [/cowork|work from|laptop|deep work/i, "cowork"],
-  [/gig|concert|open mic|music|jam/i, "music"],
-  [/photo|camera|shoot/i, "photo"],
-  [/walk|explore|wander|market/i, "explore"],
-  [/beer|drinks|pub|bar|cocktail/i, "drinks"],
-  [/dinner|lunch|brunch|breakfast|food|eat|ramen|dosa|pizza/i, "food"],
-  [/meetup|network|founders|builders/i, "network"],
-];
-
-const guessCategory = (title: string) => KEYWORDS.find(([re]) => re.test(title))?.[1];
 
 const toLocalInput = (t: number) => {
   const d = new Date(t - new Date(t).getTimezoneOffset() * 60000);
@@ -139,6 +117,13 @@ export default function PlanForm({
   const picked = d.placeName.trim().length > 0;
   const center = picked ? { lat: d.lat, lng: d.lng } : { lat: geo.coords.lat, lng: geo.coords.lng };
 
+  // when editing or copying a plan, the already-chosen category can sit off-screen in the
+  // scroller — bring it into view so the form doesn't look blank
+  const catRow = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    catRow.current?.querySelector<HTMLElement>('[data-on="true"]')?.scrollIntoView({ inline: "center", block: "nearest" });
+  }, []);
+
   const abort = useRef<AbortController | null>(null);
   useEffect(() => {
     const t = setTimeout(async () => {
@@ -197,11 +182,12 @@ export default function PlanForm({
 
       <section>
         <p className="label mb-2">what kind of thing</p>
-        <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4">
+        <div ref={catRow} className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4">
           {CATEGORIES.map((c) => (
             <Chip
               key={c.key}
               on={d.category === c.key}
+              data-on={d.category === c.key}
               className="shrink-0"
               onClick={() => {
                 setCatTouched(true);
@@ -288,14 +274,14 @@ export default function PlanForm({
             variant="light"
             size="sm"
             onClick={async () => {
-              const here = await geo.locate();
-              if (!here) return;
-              set({ lat: here.lat, lng: here.lng });
-              const area = await reverseArea(here.lat, here.lng);
-              if (area) {
-                set({ areaName: area, placeName: d.placeName || `around ${area}` });
-                setPlaceQuery((p) => p || `around ${area}`);
-              }
+              // neither GPS permission nor the geocoder is a hard dependency here: with
+              // location blocked we fall back to the area on your profile, and if the
+              // geocoder has nothing to say the spot still gets a name you can edit.
+              const here = (await geo.locate()) ?? geo.coords;
+              const area = (await reverseArea(here.lat, here.lng)) || me?.areaName || "";
+              const label = area ? `around ${area}` : "my current spot";
+              set({ lat: here.lat, lng: here.lng, areaName: area || undefined, placeName: label });
+              setPlaceQuery(label);
             }}
           >
             📍 right where i am

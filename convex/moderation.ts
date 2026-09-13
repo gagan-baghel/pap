@@ -1,6 +1,6 @@
 import { ConvexError, v } from "convex/values";
 import { internalMutation, mutation, query } from "./_generated/server";
-import { notify, publicUserById, rateLimit, requireAdmin, requireViewer, track } from "./lib";
+import { notify, publicUser, publicUserById, rateLimit, requireAdmin, requireViewer, track } from "./lib";
 import { REPORT_REASONS } from "./shared";
 
 const AUTO_HIDE_AT = 3;
@@ -153,6 +153,41 @@ export const resolve = mutation({
     const open = await ctx.db.query("reports").withIndex("by_target", (q) => q.eq("targetId", r.targetId).eq("status", "open")).collect();
     for (const o of open) await ctx.db.patch(o._id, { status: action === "dismiss" ? "dismissed" : "resolved", resolution: action });
     await track(ctx, "report_resolved", admin._id, { action });
+  },
+});
+
+/**
+ * Who is currently paused. Resolving a report closes it, so without this list a moderator
+ * would have no way back to a suspension they'd already handed out.
+ * ponytail: scans up to 1000 users; add an index on suspendedUntil if pausing ever scales.
+ */
+export const suspended = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+    const now = Date.now();
+    const users = await ctx.db.query("users").take(1000);
+    return Promise.all(
+      users
+        .filter((u) => (u.suspendedUntil ?? 0) > now && !u.deletedAt)
+        .map(async (u) => ({ ...(await publicUser(ctx, u)), until: u.suspendedUntil! })),
+    );
+  },
+});
+
+export const setSuspension = mutation({
+  args: { userId: v.id("users"), on: v.boolean(), days: v.optional(v.number()) },
+  handler: async (ctx, { userId, on, days }) => {
+    const admin = await requireAdmin(ctx);
+    const span = days ?? 30;
+    await ctx.db.patch(userId, { suspendedUntil: on ? Date.now() + span * 864e5 : undefined });
+    await notify(ctx, userId, {
+      kind: "moderation",
+      text: on
+        ? `your account is paused for ${span} days while we review a report.`
+        : "your account is active again — thanks for your patience.",
+    });
+    await track(ctx, on ? "user_suspended" : "user_unsuspended", admin._id, { userId, days: span });
   },
 });
 

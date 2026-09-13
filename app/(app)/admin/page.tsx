@@ -4,6 +4,7 @@ import { useMe, useNow } from "@/components/hooks";
 import { errorText, useToast } from "@/components/toast";
 import { Avatar, Badge, Button, Empty, TopBar } from "@/components/ui";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { timeAgo } from "@/convex/shared";
 import { useMutation, useQuery } from "convex/react";
 import Link from "next/link";
@@ -30,6 +31,8 @@ export default function AdminPage() {
   const me = useMe();
   const queue = useQuery(api.moderation.queue, me?.isAdmin ? {} : "skip");
   const resolve = useMutation(api.moderation.resolve);
+  const suspended = useQuery(api.moderation.suspended, me?.isAdmin ? {} : "skip");
+  const setSuspension = useMutation(api.moderation.setSuspension);
   const toast = useToast();
   const now = useNow();
 
@@ -40,6 +43,37 @@ export default function AdminPage() {
     <div>
       <TopBar title="moderation" sub="open reports, newest first. plans auto-pause at three reports." back="/settings" />
       <div className="space-y-3 px-4 py-4">
+        {!!suspended?.length && (
+          <section className="card p-4">
+            <p className="label mb-2">paused accounts</p>
+            {suspended.map((u) => (
+              <div key={u._id} className="flex items-center gap-3 py-2">
+                <Avatar user={u} size={32} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-bold">{u.name}</span>
+                  <span className="block truncate text-xs text-muted">
+                    @{u.handle} · until {new Date(u.until).toLocaleDateString()}
+                  </span>
+                </span>
+                <Button
+                  size="sm"
+                  variant="light"
+                  onClick={async () => {
+                    try {
+                      await setSuspension({ userId: u._id as Id<"users">, on: false });
+                      toast(`${u.name} is active again`);
+                    } catch (e) {
+                      toast(errorText(e), "bad");
+                    }
+                  }}
+                >
+                  lift
+                </Button>
+              </div>
+            ))}
+            <p className="mt-2 text-xs text-muted">resolving a report closes it, so lifted suspensions live here rather than in the queue.</p>
+          </section>
+        )}
         {queue === undefined ? (
           <div className="skeleton h-28 rounded-card" />
         ) : queue.length === 0 ? (

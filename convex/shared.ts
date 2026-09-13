@@ -28,6 +28,34 @@ export type CategoryKey = (typeof CATEGORIES)[number]["key"];
 
 export const category = (key: string) => CATEGORIES.find((c) => c.key === key) ?? CATEGORIES[CATEGORIES.length - 1];
 
+/**
+ * Guesses a category from what someone typed. Word boundaries matter: without them
+ * "creator meetup" matches /eat/ (food) and "brunch" matches /run/ (running).
+ * First match wins, so the list is ordered most-specific first.
+ */
+const KEYWORDS: [RegExp, string][] = [
+  [/\b(badminton|shuttle)\b/i, "badminton"],
+  [/\b(football|soccer|turf|5-a-side)\b/i, "football"],
+  [/\btennis\b/i, "tennis"],
+  [/\b(cycl\w*|bike|biking|bicycle)\b/i, "cycle"],
+  [/\b(run|runs|running|jog\w*|5k|10k|marathon)\b/i, "run"],
+  [/\b(gym|lift|lifting|workout|leg day)\b/i, "gym"],
+  [/\b(hike|hiking|trek\w*|trail)\b/i, "hike"],
+  [/\b(movie|movies|film|cinema)\b/i, "movie"],
+  [/\b(gaming|game|games|chess|ps5|xbox)\b/i, "gaming"],
+  [/\b(study|exam|revision|library)\b/i, "study"],
+  [/\b(cowork\w*|laptop|deep work)\b/i, "cowork"],
+  [/\b(gig|concert|open mic|music|jam)\b/i, "music"],
+  [/\b(photo\w*|camera|shoot)\b/i, "photo"],
+  [/\b(meetup|network\w*|founders|builders|creators?)\b/i, "network"],
+  [/\b(coffee|caf[eé]|latte|chai|espresso)\b/i, "coffee"],
+  [/\b(beer|drinks|pub|bar|cocktail)\b/i, "drinks"],
+  [/\b(dinner|lunch|brunch|breakfast|food|eat|ramen|dosa|pizza|noodles)\b/i, "food"],
+  [/\b(walk|explore|wander|market)\b/i, "explore"],
+];
+
+export const guessCategory = (title: string) => KEYWORDS.find(([re]) => re.test(title))?.[1];
+
 export const AVAILABILITY = [
   { key: "mornings", label: "early mornings", emoji: "🌅" },
   { key: "lunch", label: "lunch breaks", emoji: "🥪" },
