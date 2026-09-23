@@ -260,6 +260,16 @@ export default function DiscoverPage() {
             />
           )}
 
+          {circles?.length === 0 && (
+            <Link href="/circles" className="card mt-6 flex items-center gap-3 p-4">
+              <span className="text-2xl">🔁</span>
+              <span className="min-w-0 flex-1">
+                <span className="block font-extrabold tracking-tight">no circles around here yet</span>
+                <span className="block text-xs text-muted">start a run club, a sunday football game, cowork fridays — plans that repeat every week.</span>
+              </span>
+              <span className="btn btn-light btn-sm">start one</span>
+            </Link>
+          )}
           {!!circles?.length && (
             <section className="pt-6">
               <div className="flex items-end justify-between px-1">

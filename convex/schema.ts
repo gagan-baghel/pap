@@ -69,6 +69,7 @@ export default defineSchema({
     .index("email", ["email"])
     .index("phone", ["phone"])
     .index("by_handle", ["handle"])
+    .index("by_image", ["imageId"])
     .searchIndex("search_name", { searchField: "searchName" }),
 
   plans: defineTable({

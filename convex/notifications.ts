@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { publicUserById, viewer } from "./lib";
+import { follows, publicUserById, viewer } from "./lib";
 import { category } from "./shared";
 
 export const list = query({
@@ -21,6 +21,9 @@ export const list = query({
           planId: n.planId ?? null,
           emoji: plan ? category(plan.category).emoji : null,
           actor: n.actorId ? await publicUserById(ctx, n.actorId) : null,
+          // someone started following you (or joined from your link): one tap makes it mutual
+          followBack:
+            (n.kind === "follow" || n.kind === "referral") && !!n.actorId && !(await follows(ctx, me._id, n.actorId)),
         };
       }),
     );

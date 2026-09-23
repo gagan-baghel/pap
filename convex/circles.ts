@@ -70,7 +70,7 @@ export const setMember = mutation({
   handler: async (ctx, { circleId, on }) => {
     const me = on ? await requireActive(ctx) : await requireViewer(ctx);
     const c = await ctx.db.get(circleId);
-    if (!c) throw new ConvexError("this circle doesn't exist");
+    if (!c || (on && c.status === "hidden")) throw new ConvexError("this circle isn't taking members right now");
     const row = await ctx.db.query("circleMembers").withIndex("by_pair", (q) => q.eq("circleId", circleId).eq("userId", me._id)).unique();
     if (on && !row) {
       await ctx.db.insert("circleMembers", { circleId, userId: me._id });

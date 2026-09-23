@@ -48,7 +48,7 @@ export default function PlanView({ id }: { id: string }) {
   const [invited, setInvited] = useState<string[]>([]);
   const [postedSheet, setPostedSheet] = useState(params.get("new") === "1");
 
-  // invite attribution: whoever's link brought you here becomes a friend when you sign up
+  // invite attribution: whoever's link brought you here gets a follow (and a follow-back prompt) when you sign up
   const ref = params.get("ref");
   useEffect(() => {
     if (!ref) return;

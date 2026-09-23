@@ -25,7 +25,6 @@ export const pending = query({
       if (done) continue;
       const isHost = p.hostId === me._id;
       const others = (await goingRows(ctx, p._id)).filter((g) => g.userId !== me._id);
-      if (!isHost && others.length === 0 && p.hostId === me._id) continue;
       const people = (await Promise.all([...(isHost ? [] : [p.hostId]), ...others.map((o) => o.userId)].map((id) => publicUserById(ctx, id)))).filter((x) => x !== null);
       if (isHost && people.length === 0) continue; // nobody came along, nothing to ask
       out.push({ planId: p._id, title: p.title, emoji: category(p.category).emoji, endAt: p.endAt, isHost, people, finalized: !!p.finalized });

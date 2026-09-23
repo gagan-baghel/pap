@@ -260,6 +260,7 @@ export async function toCard(
     currency: plan.currency,
     visibility: plan.visibility,
     approval: plan.approval,
+    hasRequirements: !!plan.requirements,
     recurrence: plan.recurrence ?? null,
     circleId: plan.circleId ?? null,
     exact,

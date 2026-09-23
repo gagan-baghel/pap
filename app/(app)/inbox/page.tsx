@@ -1,8 +1,10 @@
 "use client";
 
 import { useNow } from "@/components/hooks";
-import { Avatar, Empty, Segmented, TopBar } from "@/components/ui";
+import { errorText, useToast } from "@/components/toast";
+import { Avatar, Button, Empty, Segmented, TopBar } from "@/components/ui";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { formatWhen, timeAgo } from "@/convex/shared";
 import { useMutation, useQuery } from "convex/react";
 import Link from "next/link";
@@ -14,6 +16,8 @@ export default function InboxPage() {
   const notifications = useQuery(api.notifications.list);
   const markAllRead = useMutation(api.notifications.markAllRead);
   const markRead = useMutation(api.notifications.markRead);
+  const follow = useMutation(api.users.follow);
+  const toast = useToast();
   const now = useNow();
   const unreadNotifs = (notifications ?? []).filter((n) => !n.read).length;
 
@@ -98,13 +102,27 @@ export default function InboxPage() {
                 </>
               );
               const href = n.planId ? `/p/${n.planId}` : n.actor?.handle ? `/u/${n.actor.handle}` : null;
-              return href ? (
-                <Link key={n._id} href={href} onClick={() => !n.read && markRead({ id: n._id })} className="card flex items-center gap-3 p-3.5">
-                  {inner}
-                </Link>
-              ) : (
+              return (
                 <div key={n._id} className="card flex items-center gap-3 p-3.5">
-                  {inner}
+                  {href ? (
+                    <Link href={href} onClick={() => !n.read && markRead({ id: n._id })} className="flex min-w-0 flex-1 items-center gap-3">
+                      {inner}
+                    </Link>
+                  ) : (
+                    <div className="flex min-w-0 flex-1 items-center gap-3">{inner}</div>
+                  )}
+                  {n.followBack && n.actor && (
+                    <Button
+                      size="sm"
+                      onClick={() =>
+                        follow({ userId: n.actor!._id as Id<"users">, on: true })
+                          .then(() => toast(`you and ${n.actor!.name} are friends now 🤝`))
+                          .catch((e) => toast(errorText(e), "bad"))
+                      }
+                    >
+                      follow back
+                    </Button>
+                  )}
                 </div>
               );
             })

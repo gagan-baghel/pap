@@ -27,7 +27,7 @@ These were judgement calls, not spec-following:
 
 ## What's built
 
-**Discover** — location-aware ranking (time proximity, distance, interests, friends going, followed hosts, free-window fit), list + map views, search, filters (cost, group size, spots available, friends going), time windows (now / tonight / tomorrow / weekend / week), category chips, automatic widening when a window is empty, nearby circles, demo-seeding fallback.
+**Discover** — one-tap **i'm in** straight from the card for instant-join plans, location-aware ranking (time proximity, distance, interests, friends going, followed hosts, free-window fit), list + map views, search, filters (cost, group size, spots available, friends going), time windows (now / tonight / tomorrow / weekend / week), category chips, automatic widening when a window is empty, nearby circles, demo-seeding fallback.
 
 **Plans** — create (≈15 seconds: title with category auto-guess, time presets, place search or map pin, spots, cost, visibility; pre-filled when posting a circle session), edit, cancel with reason, join / waitlist with auto-promotion / request+approval, leave (late drop-outs counted), participant management, host attendance marking, check-in, invites to friends, save-for-later from any card, add-to-calendar, share links with OG images, recurring weekly plans, and "post it again" — any plan you hosted becomes the template for the next one.
 
@@ -119,7 +119,7 @@ npm run deploy                 # preflight, then `convex deploy` with the Next b
 
 **Why the dev login can't leak.** It needs `ALLOW_DEV_LOGIN=true` *and* a `SITE_URL` pointing at localhost ([convex/devauth.ts](convex/devauth.ts)); demo seeding is gated the same way. Setting the flag on a real deployment still does nothing, and preflight catches the mistake before the deploy runs.
 
-**Security posture:** security headers (HSTS, nosniff, frame, referrer, a `geolocation=(self)` permissions policy) in [next.config.ts](next.config.ts); every mutation goes through `requireViewer`/`requireActive`/`requireAdmin` with per-user rate limits; validation and user-facing `ConvexError` messages on every write; profiles and app routes are `noindex` ([app/robots.ts](app/robots.ts)) so only the landing, safety page and shared plan links are crawlable.
+**Security posture:** security headers (HSTS, nosniff, frame, referrer, a `geolocation=(self)` permissions policy) in [next.config.ts](next.config.ts); every mutation goes through `requireViewer`/`requireActive`/`requireAdmin` with per-user rate limits; validation and user-facing `ConvexError` messages on every write; profiles and app routes are `noindex` ([app/robots.ts](app/robots.ts)) so only the landing, safety page and shared plan links are crawlable. Invite links (`?ref=`) only ever create a one-way follow plus a "follow back" prompt — never an automatic friendship, since friendship unlocks free-now status and friends-only plans. Avatar uploads can't claim a storage file another account already uses.
 
 **Maintenance:** `npx convex run jobs:recount` repairs the denormalised participant counters if they ever drift.
 

@@ -5,7 +5,8 @@ import { category, formatCost, formatDistance, formatWhenRange, planPhase } from
 import { useConvexAuth, useMutation } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import Link from "next/link";
-import { AvatarStack, Badge } from "./ui";
+import { useState } from "react";
+import { AvatarStack, Badge, Spinner } from "./ui";
 import { errorText, useToast } from "./toast";
 
 export type Card = FunctionReturnType<typeof api.plans.mine>[number];
@@ -40,7 +41,15 @@ export default function PlanCard({ card, now, href }: { card: Card; now: number;
   const you = card.viewerStatus;
   const { isAuthenticated } = useConvexAuth();
   const toggleSave = useMutation(api.plans.toggleSave);
+  const join = useMutation(api.plans.join);
   const toast = useToast();
+  const [joining, setJoining] = useState(false);
+  const open = phase !== "ended" && phase !== "cancelled";
+  // instant plans join straight from the list; anything with approval, rules or a waitlist opens the plan first
+  const quickJoin =
+    isAuthenticated && open && (you === null || you === "left") && !card.approval && !card.hasRequirements && card.goingCount < card.spots;
+  const showSave = isAuthenticated && you !== "host" && open;
+  const pad = quickJoin ? "pr-28" : showSave ? "pr-8" : "";
 
   return (
     <div className="relative">
@@ -83,10 +92,10 @@ export default function PlanCard({ card, now, href }: { card: Card; now: number;
             </div>
             <div className="mt-2.5 flex items-center gap-2">
               <AvatarStack users={[card.host, ...card.going]} size={24} max={4} />
-              <span className="truncate pr-8 text-xs text-muted">{spotsLine(card)}</span>
+              <span className={`truncate text-xs text-muted ${pad}`}>{spotsLine(card)}</span>
             </div>
             {!!card.reasons?.length && (
-              <div className="mt-2 flex flex-wrap gap-1.5">
+              <div className={`mt-2 flex flex-wrap gap-1.5 ${pad}`}>
                 {card.reasons.map((r) => (
                   <span key={r} className="rounded-full bg-black/5 px-2 py-0.5 text-[11px] font-semibold text-muted">
                     {r}
@@ -98,7 +107,28 @@ export default function PlanCard({ card, now, href }: { card: Card; now: number;
         </div>
       </Link>
 
-      {isAuthenticated && you !== "host" && phase !== "ended" && phase !== "cancelled" && (
+      <div className="absolute bottom-3 right-3 flex items-center gap-1.5">
+      {quickJoin && (
+        <button
+          disabled={joining}
+          onClick={async (e) => {
+            e.preventDefault();
+            setJoining(true);
+            try {
+              await join({ id: card._id });
+              toast("you're in 🎉 the plan chat is open in your inbox");
+            } catch (err) {
+              toast(errorText(err), "bad");
+            } finally {
+              setJoining(false);
+            }
+          }}
+          className="grid h-8 min-w-[4.5rem] place-items-center rounded-full bg-ink px-3 text-xs font-extrabold text-white shadow-soft transition active:scale-90"
+        >
+          {joining ? <Spinner /> : "i'm in"}
+        </button>
+      )}
+      {showSave && (
         <button
           aria-label={card.saved ? "remove from saved" : "save for later"}
           onClick={async (e) => {
@@ -110,13 +140,14 @@ export default function PlanCard({ card, now, href }: { card: Card; now: number;
               toast(errorText(err), "bad");
             }
           }}
-          className={`absolute bottom-3 right-3 grid size-8 place-items-center rounded-full text-sm transition active:scale-90 ${
+          className={`grid size-8 place-items-center rounded-full text-sm transition active:scale-90 ${
             card.saved ? "bg-ink text-white" : "bg-black/5 text-muted"
           }`}
         >
           {card.saved ? "★" : "☆"}
         </button>
       )}
+      </div>
     </div>
   );
 }

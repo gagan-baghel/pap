@@ -68,6 +68,8 @@ type PlanInput = {
   cost: number;
   visibility: Doc<"plans">["visibility"];
   circleId?: Id<"circles">;
+  currency?: string;
+  tz?: string;
 };
 
 function clean(a: PlanInput, me: Doc<"users">, isNew: boolean) {
@@ -90,6 +92,8 @@ function clean(a: PlanInput, me: Doc<"users">, isNew: boolean) {
   if ((a.description?.length ?? 0) > 1500) fail("description is too long (1500 max)");
   if ((a.bring?.length ?? 0) > 200 || (a.requirements?.length ?? 0) > 200) fail("keep 'bring' and 'requirements' short");
   if (a.visibility === "circle" && !a.circleId) fail("pick which circle this is for");
+  if (a.currency !== undefined && !/^[A-Z]{3}$/.test(a.currency)) fail("that currency doesn't look right");
+  if (a.tz !== undefined && !/^[A-Za-z0-9_+\-/]{1,40}$/.test(a.tz)) fail("that time zone doesn't look right");
   return {
     title,
     placeName: a.placeName.trim().slice(0, 120),
@@ -602,6 +606,7 @@ export const respond = mutation({
     const me = await requireViewer(ctx);
     const plan = await getPlanOr404(ctx, id);
     hostOnly(plan, me);
+    if (accept && (plan.status !== "active" || plan.endAt <= Date.now())) throw new ConvexError("this plan isn't taking people anymore");
     const p = await participation(ctx, id, userId);
     if (!p || p.status !== "requested") return;
     if (!accept) {
@@ -655,6 +660,7 @@ export const toggleSave = mutation({
   args: { id: v.id("plans") },
   handler: async (ctx, { id }) => {
     const me = await requireViewer(ctx);
+    if (!(await ctx.db.get(id))) throw new ConvexError("this plan doesn't exist anymore");
     const row = await ctx.db
       .query("saves")
       .withIndex("by_user_plan", (q) => q.eq("userId", me._id).eq("planId", id))
@@ -671,7 +677,8 @@ export const checkIn = mutation({
     const me = await requireViewer(ctx);
     const plan = await getPlanOr404(ctx, id);
     const now = Date.now();
-    if (now < plan.startAt - 30 * 60e3 || now > plan.endAt + 60 * 60e3) throw new ConvexError("check-in opens 30 minutes before the plan starts");
+    if (now < plan.startAt - 30 * 60e3) throw new ConvexError("check-in opens 30 minutes before the plan starts");
+    if (now > plan.endAt + 60 * 60e3 || plan.status !== "active") throw new ConvexError("check-in for this plan has closed");
     const p = await participation(ctx, id, me._id);
     if (!p || p.status !== "going") throw new ConvexError("you're not on this plan");
     await ctx.db.patch(p._id, { checkedInAt: now, attended: true });
@@ -699,6 +706,7 @@ export const invite = mutation({
   handler: async (ctx, { id, userIds }) => {
     const me = await requireActive(ctx);
     const plan = await getPlanOr404(ctx, id);
+    if (plan.status !== "active" || plan.endAt <= Date.now()) throw new ConvexError("this plan isn't taking people anymore");
     const mine = await participation(ctx, id, me._id);
     if (plan.hostId !== me._id && mine?.status !== "going") throw new ConvexError("join the plan before inviting people");
     if (userIds.length > 20) throw new ConvexError("invite up to 20 people at a time");
@@ -720,8 +728,11 @@ export const invite = mutation({
 export const shared = mutation({
   args: { id: v.id("plans"), channel: v.string() },
   handler: async (ctx, { id, channel }) => {
+    // signed-in only: an open endpoint that writes a row per call is a free way to fill our tables
     const me = await viewer(ctx);
-    await track(ctx, "plan_shared", me?._id, { planId: id, channel: channel.slice(0, 20) });
+    if (!me) return;
+    await rateLimit(ctx, `share:${me._id}`, 60, 36e5);
+    await track(ctx, "plan_shared", me._id, { planId: id, channel: channel.slice(0, 20) });
   },
 });
 

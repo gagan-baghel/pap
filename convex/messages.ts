@@ -116,7 +116,7 @@ export const send = mutation({
       if (thread.plan.endAt < Date.now() - 7 * 864e5) throw new ConvexError("this chat closed a week after the plan");
     } else {
       const other = await ctx.db.get(thread.otherId);
-      if (!other || (await isBlocked(ctx, me._id, thread.otherId))) throw new ConvexError("you can't message this person");
+      if (!other || other.deletedAt || (await isBlocked(ctx, me._id, thread.otherId))) throw new ConvexError("you can't message this person");
       // re-add the other side if they had left the thread
       await addThreadMember(ctx, threadKey, thread.otherId);
     }

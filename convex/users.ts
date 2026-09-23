@@ -80,7 +80,9 @@ export const completeOnboarding = mutation({
     const interests = cleanList(a.interests, CATEGORIES);
     if (interests.length < 1) throw new ConvexError("pick at least one thing you like doing");
 
-    const referrer = a.ref ? ctx.db.normalizeId("users", a.ref) : null;
+    const refId = a.ref ? ctx.db.normalizeId("users", a.ref) : null;
+    const refUser = refId && refId !== me._id ? await ctx.db.get(refId) : null;
+    const referrer = refUser && !refUser.deletedAt && refUser.onboardedAt ? refUser._id : null;
     const firstTime = !me.onboardedAt;
     await ctx.db.patch(me._id, {
       name,
@@ -99,17 +101,15 @@ export const completeOnboarding = mutation({
       showFreeToFriends: me.showFreeToFriends ?? true,
       notifyFollowing: me.notifyFollowing ?? true,
       radiusKm: me.radiusKm ?? 10,
-      ...(firstTime && referrer && referrer !== me._id ? { referredBy: referrer } : {}),
+      ...(firstTime && referrer ? { referredBy: referrer } : {}),
     });
 
-    // Invite loop: whoever brought you here becomes a friend automatically.
-    if (firstTime && referrer && referrer !== me._id && (await ctx.db.get(referrer))) {
-      for (const [f, t] of [
-        [me._id, referrer],
-        [referrer, me._id],
-      ] as const)
-        if (!(await follows(ctx, f, t))) await ctx.db.insert("follows", { followerId: f, followeeId: t });
-      await notify(ctx, referrer, { kind: "referral", text: `${name} joined PAP from your link — you're now friends`, actorId: me._id });
+    // Invite loop: you follow whoever brought you here, and they get a one-tap "follow back".
+    // Never an automatic friendship — a ref is just a URL param, and friendship unlocks
+    // free-now status and friends-only plans, so both sides have to choose it.
+    if (firstTime && referrer) {
+      if (!(await follows(ctx, me._id, referrer))) await ctx.db.insert("follows", { followerId: me._id, followeeId: referrer });
+      await notify(ctx, referrer, { kind: "referral", text: `${name} joined PAP from your link — follow back to be friends`, actorId: me._id });
     }
     if (firstTime) await track(ctx, "onboarding_completed", me._id, { interests: interests.length, heardFrom: a.heardFrom, referred: !!referrer });
   },
@@ -221,8 +221,13 @@ export const setAvatar = mutation({
   args: { storageId: v.id("_storage") },
   handler: async (ctx, { storageId }) => {
     const me = await requireViewer(ctx);
+    // storage ids appear in public avatar URLs — never let someone claim (and later delete) a file that's already in use
+    const owner = await ctx.db.query("users").withIndex("by_image", (q) => q.eq("imageId", storageId)).first();
+    if (owner && owner._id !== me._id) throw new ConvexError("that photo didn't upload properly — try again");
+    if (owner) return;
     const meta = await ctx.db.system.get(storageId);
-    if (!meta || !meta.contentType?.startsWith("image/") || meta.size > 5_000_000) {
+    if (!meta || meta._creationTime < Date.now() - 36e5) throw new ConvexError("that photo didn't upload properly — try again");
+    if (!meta.contentType?.startsWith("image/") || meta.size > 5_000_000) {
       await ctx.storage.delete(storageId);
       throw new ConvexError("photos must be images under 5 MB");
     }
@@ -333,6 +338,8 @@ export const follow = mutation({
       .unique();
     if (!on) return void (row && (await ctx.db.delete(row._id)));
     if (row) return;
+    const target = await ctx.db.get(userId);
+    if (!target || target.deletedAt || !target.onboardedAt) throw new ConvexError("that account doesn't exist");
     const blocked = (await blockedIds(ctx, me._id)).has(userId);
     if (blocked) throw new ConvexError("you can't follow this person");
     await rateLimit(ctx, `follow:${me._id}`, 100, 864e5);
@@ -407,9 +414,10 @@ export const deleteAccount = mutation({
     const now = Date.now();
     const hosted = await ctx.db
       .query("plans")
-      .withIndex("by_host_start", (q) => q.eq("hostId", me._id).gte("startAt", now))
+      .withIndex("by_host_start", (q) => q.eq("hostId", me._id).gte("startAt", now - 864e5))
       .collect();
     for (const p of hosted) {
+      if (p.status === "cancelled" || p.endAt <= now) continue;
       await ctx.db.patch(p._id, { status: "cancelled", cancelReason: "the host deleted their account" });
       const rows = await ctx.db.query("participants").withIndex("by_plan_status", (q) => q.eq("planId", p._id).eq("status", "going")).collect();
       for (const r of rows) await notify(ctx, r.userId, { kind: "cancelled", text: `${p.title} was cancelled`, planId: p._id });
@@ -422,6 +430,11 @@ export const deleteAccount = mutation({
         if (plan && status === "going") await ctx.db.patch(plan._id, { goingCount: Math.max(0, plan.goingCount - 1) });
         if (plan && status === "waitlist") await ctx.db.patch(plan._id, { waitCount: Math.max(0, plan.waitCount - 1) });
       }
+    }
+    for (const m of await ctx.db.query("circleMembers").withIndex("by_user", (q) => q.eq("userId", me._id)).collect()) {
+      await ctx.db.delete(m._id);
+      const c = await ctx.db.get(m.circleId);
+      if (c) await ctx.db.patch(c._id, { memberCount: Math.max(0, c.memberCount - 1) });
     }
     for (const f of await ctx.db.query("follows").withIndex("by_follower", (q) => q.eq("followerId", me._id)).collect()) await ctx.db.delete(f._id);
     for (const f of await ctx.db.query("follows").withIndex("by_followee", (q) => q.eq("followeeId", me._id)).collect()) await ctx.db.delete(f._id);
